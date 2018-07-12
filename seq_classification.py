@@ -12,9 +12,13 @@ from __future__ import print_function
 from six.moves import xrange  # pylint: disable=redefined-builtin
 # We disable pylint because we need python3 compatibility.
 import tensorflow as tf
-from tensorflow.python.ops import rnn_cell_impl
 
-linear = rnn_cell_impl._linear
+try:
+    from tensorflow.python.ops import rnn_cell_impl
+    linear = rnn_cell_impl._linear
+except AttributeError:
+    from tensorflow.contrib.rnn.python.ops.core_rnn_cell import _linear
+    linear = _linear
 
 def attention_single_output_decoder(initial_state, 
                                     attention_states,

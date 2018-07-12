@@ -19,9 +19,12 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.contrib.legacy_seq2seq import sequence_loss_by_example
 from tensorflow.contrib.legacy_seq2seq import sequence_loss
 
-from tensorflow.python.ops import rnn_cell_impl
-
-linear = rnn_cell_impl._linear
+try:
+    from tensorflow.python.ops import rnn_cell_impl
+    linear = rnn_cell_impl._linear
+except AttributeError:
+    from tensorflow.contrib.rnn.python.ops.core_rnn_cell import _linear
+    linear = _linear
 
 def _step(time, sequence_length, min_sequence_length, 
           max_sequence_length, zero_logit, generate_logit):
