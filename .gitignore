@@ -1,0 +1,15 @@
+.ipynb_checkpoints/
+__pycache__/
+data/ATIS_samples/in_vocab_10000.txt
+data/ATIS_samples/label.txt
+data/ATIS_samples/out_vocab_10000.txt
+data/ATIS_samples/test/test.ids.label
+data/ATIS_samples/test/test.ids10000.seq.in
+data/ATIS_samples/test/test.ids10000.seq.out
+data/ATIS_samples/train/train.ids.label
+data/ATIS_samples/train/train.ids10000.seq.in
+data/ATIS_samples/train/train.ids10000.seq.out
+data/ATIS_samples/valid/valid.ids.label
+data/ATIS_samples/valid/valid.ids10000.seq.in
+data/ATIS_samples/valid/valid.ids10000.seq.out
+new_model_atis/

@@ -43,7 +43,7 @@ tf.app.flags.DEFINE_integer("max_train_data_size", 0,
                             "Limit on the size of training data (0: no limit)")
 tf.app.flags.DEFINE_integer("steps_per_checkpoint", 100,
                             "How many training steps to do per checkpoint.")
-tf.app.flags.DEFINE_integer("max_training_steps", 30000,
+tf.app.flags.DEFINE_integer("max_training_steps", 3000,
                             "Max training steps.")
 tf.app.flags.DEFINE_integer("max_test_data_size", 0,
                             "Max size of test set.")
@@ -81,7 +81,28 @@ _buckets = [(FLAGS.max_sequence_length, FLAGS.max_sequence_length)]
 #_buckets = [(3, 10), (10, 25)]
 
 # metrics function using conlleval.pl
-def conlleval(p, g, w, filename):
+def intenteval(p, filename, mode):
+  # mode: Eval, Test
+    if mode == 'Test':
+      path = FLAGS.data_dir + '/test/test.label'
+    else:
+      path = FLAGS.data_dir + '/valid/valid.label'
+      
+    with open(path) as infile:
+      intents = [line.strip() for line in infile.read().split('\n')]
+
+    print(len(intents), len(p))
+    
+    out = ''
+    for intent, pred in zip(intents, p):
+      out += '{} {}\n'.format(intent, pred)
+
+    with open(filename, 'w') as outfile:
+      outfile.writelines(out[:-1]) # remove the ending \n on last line
+
+    print(out)
+
+def conlleval(p, g, w, filename, mode):
     '''
     INPUT:
     p :: predictions
@@ -94,40 +115,71 @@ def conlleval(p, g, w, filename):
     for computing the performance in terms of precision
     recall and f1 score
     '''
+    # mode: Eval, Test
+    if mode == 'Test':
+      path_in = FLAGS.data_dir + '/test/test.seq.in'
+      path_out = FLAGS.data_dir + '/test/test.seq.out'
+    else:
+      path_in = FLAGS.data_dir + '/valid/valid.seq.in'
+      path_out = FLAGS.data_dir + '/valid/valid.seq.out'
+
+    with open(path_in) as infile:
+      utterances = [line.split() for line in infile.read().split('\n')]
+
+    with open(path_out) as infile:
+      slots = [line.split() for line in infile.read().split('\n')]
+
+    print(len(utterances), len(slots), len(p))
     out = ''
+
+    for words, tags, pred in zip(utterances, slots, p):
+      out += 'BOS O O\n'
+      for word, tag, tag_pred in zip(words, tags, pred):
+        out += '{} {} {}\n'.format(word, tag, tag_pred)
+
+      out += 'EOS O O\n\n'
+    
+
+    print(out)
+
+    """ out = ''
     for sl, sp, sw in zip(g, p, w):
         out += 'BOS O O\n'
         for wl, wp, w in zip(sl, sp, sw):
             out += w + ' ' + wl + ' ' + wp + '\n'
         out += 'EOS O O\n\n'
+    print(out)
+    """
 
     f = open(filename, 'w')
     f.writelines(out[:-1]) # remove the ending \n on last line
     f.close()
 
+    print('get_perf:', filename)
     return get_perf(filename)
 
 def get_perf(filename):
     ''' run conlleval.pl perl script to obtain
     precision/recall and F1 score '''
+
     _conlleval = os.path.dirname(os.path.realpath(__file__)) + '/conlleval.pl'
-    os.chmod(_conlleval, stat.S_IRWXU)  # give the execute permissions
 
-    proc = subprocess.Popen(["perl",
-                            _conlleval],
-                            stdin=subprocess.PIPE,
-                            stdout=subprocess.PIPE)
+    print(_conlleval)
+    print(filename)
+    output = subprocess.getoutput("perl conlleval.pl < {}".format(filename))
+    print(output)
 
-    stdout, _ = proc.communicate(''.join(open(filename).readlines()))
-    for line in stdout.split('\n'):
+    for line in output.split('\n'):
+        print('L:', line)
         if 'accuracy' in line:
             out = line.split()
             break
-
+    
     precision = float(out[6][:-2])
     recall = float(out[8][:-2])
     f1score = float(out[10])
 
+    print({'p': precision, 'r': recall, 'f1': f1score})
     return {'p': precision, 'r': recall, 'f1': f1score}
 
 
@@ -226,9 +278,8 @@ def create_model(session,
         
 def train():
   print ('Applying Parameters:')
-  for k,v in FLAGS.__flags.iteritems():
-    print ('%s: %s' % (k, str(v)))
   print("Preparing data in %s" % FLAGS.data_dir)
+
   vocab_path = ''
   tag_vocab_path = ''
   label_vocab_path = ''
@@ -242,6 +293,9 @@ def train():
   result_dir = FLAGS.train_dir + '/test_results'
   if not os.path.isdir(result_dir):
       os.makedirs(result_dir)
+
+  current_intent_valid_out_file = result_dir + '/intent.valid.hyp.txt'
+  current_intent_test_out_file = result_dir + '/intent.test.hyp.txt'
 
   current_taging_valid_out_file = result_dir + '/tagging.valid.hyp.txt'
   current_taging_test_out_file = result_dir + '/tagging.test.hyp.txt'
@@ -339,7 +393,7 @@ def train():
         step_time, loss = 0.0, 0.0 
         
         def run_valid_test(data_set, mode): # mode: Eval, Test
-        # Run evals on development/test set and print the accuracy.
+            """ Run evals on development/test set and print the accuracy """
             word_list = list() 
             ref_tag_list = list() 
             hyp_tag_list = list()
@@ -386,12 +440,16 @@ def train():
                   _, step_loss, class_logits = step_outputs
                 eval_loss += step_loss / len(data_set[bucket_id])
                 hyp_label = None
+                # Predict intent
                 if task['intent'] == 1:
                   ref_label_list.append(rev_label_vocab[labels[0][0]])
-                  hyp_label = np.argmax(class_logits[0],0)
+                  hyp_label = np.argmax(class_logits[0], 0)
                   hyp_label_list.append(rev_label_vocab[hyp_label])
+                  print('-->intent:', labels[0], hyp_label)
                   if labels[0] == hyp_label:
                     correct_count += 1
+
+                # Predict slots
                 if task['tagging'] == 1:
                   word_list.append([rev_vocab[x[0]] for x in \
                                     encoder_inputs[:sequence_length[0]]])
@@ -403,20 +461,38 @@ def train():
 
             accuracy = float(correct_count)*100/count
             if task['intent'] == 1:
+              if mode == 'Eval':
+                  intent_out_file = current_intent_valid_out_file
+              elif mode == 'Test':
+                  intent_out_file = current_intent_test_out_file
+
               print("  %s accuracy: %.2f %d/%d" \
                     % (mode, accuracy, correct_count, count))
               sys.stdout.flush()
+              print('intent-->', hyp_label_list)
+              intenteval(hyp_label_list, intent_out_file, mode)
             if task['tagging'] == 1:
               if mode == 'Eval':
                   taging_out_file = current_taging_valid_out_file
               elif mode == 'Test':
                   taging_out_file = current_taging_test_out_file
-              tagging_eval_result = conlleval(hyp_tag_list, 
-                                              ref_tag_list, 
-                                              word_list, 
-                                              taging_out_file)
+              
+              #print('mode', mode)
+              #print('hyp_tag_list', hyp_tag_list)
+              #print('ref_tag_list', ref_tag_list)
+              #print('word_list', word_list)
+              #print('taging_out_file', taging_out_file)
+
+              tagging_eval_result = conlleval(
+                hyp_tag_list, 
+                ref_tag_list, 
+                word_list, 
+                taging_out_file,
+                mode
+              )
               print("  %s f1-score: %.2f" % (mode, tagging_eval_result['f1']))
-              sys.stdout.flush()
+              #sys.stdout.flush()
+              #sys.exit(0)
             return accuracy, tagging_eval_result
             
         # valid
@@ -429,6 +505,10 @@ def train():
                            current_taging_valid_out_file, 
                            current_taging_valid_out_file + '.best_f1_%.2f' \
                            % best_valid_score])
+          subprocess.call(['mv', 
+                           current_intent_valid_out_file, 
+                           current_intent_valid_out_file + '.best_f1_%.2f' \
+                           % best_valid_score])
         # test, run test after each validation for development purpose.
         test_accuracy, test_tagging_result = run_valid_test(test_set, 'Test')        
         if task['tagging'] == 1 \
@@ -439,6 +519,11 @@ def train():
                            current_taging_test_out_file, 
                            current_taging_test_out_file + '.best_f1_%.2f' \
                            % best_test_score])
+          subprocess.call(['mv', 
+                           current_intent_test_out_file, 
+                           current_intent_test_out_file + '.best_f1_%.2f' \
+                           % best_test_score])
+                    
           
 def main(_):
     train()
