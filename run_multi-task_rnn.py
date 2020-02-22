@@ -11,6 +11,7 @@ from __future__ import print_function
 
 import math
 import os
+import logging
 import sys
 import time
 
@@ -24,7 +25,7 @@ import multi_task_model
 import subprocess
 import stat
 
-
+logging.basicConfig(format='%(asctime)s : %(levelname)s : %(message)s', level=logging.INFO)
 #tf.app.flags.DEFINE_float("learning_rate", 0.1, "Learning rate.")
 #tf.app.flags.DEFINE_float("learning_rate_decay_factor", 0.9,
 #                          "Learning rate decays by this much.")
@@ -59,12 +60,11 @@ tf.app.flags.DEFINE_string("task", None, "Options: joint; intent; tagging")
 FLAGS = tf.app.flags.FLAGS
     
 if FLAGS.max_sequence_length == 0:
-    print ('Please indicate max sequence length. Exit')
+    logging.info('Please indicate max sequence length. Exit')
     exit()
 
 if FLAGS.task is None:
-    print ('Please indicate task to run.' + 
-           'Available options: intent; tagging; joint')
+    logging.info('Please indicate task to run. Available options: intent; tagging; joint')
     exit()
 
 task = dict({'intent':0, 'tagging':0, 'joint':0})
@@ -82,25 +82,22 @@ _buckets = [(FLAGS.max_sequence_length, FLAGS.max_sequence_length)]
 
 # metrics function using conlleval.pl
 def intenteval(p, filename, mode):
-  # mode: Eval, Test
-    if mode == 'Test':
-      path = FLAGS.data_dir + '/test/test.label'
-    else:
-      path = FLAGS.data_dir + '/valid/valid.label'
-      
-    with open(path) as infile:
-      intents = [line.strip() for line in infile.read().split('\n')]
+  """ This function is used to save the intent detection predicted """
 
-    print(len(intents), len(p))
+  if mode == 'Test':
+    path = FLAGS.data_dir + '/test/test.label'
+  else:
+    path = FLAGS.data_dir + '/valid/valid.label'
     
-    out = ''
-    for intent, pred in zip(intents, p):
-      out += '{} {}\n'.format(intent, pred)
+  with open(path) as infile:
+    intents = [line.strip() for line in infile.read().split('\n')]
 
-    with open(filename, 'w') as outfile:
-      outfile.writelines(out[:-1]) # remove the ending \n on last line
+  out = ''
+  for intent, pred in zip(intents, p):
+    out += '{} {}\n'.format(intent, pred)
 
-    print(out)
+  with open(filename, 'w') as outfile:
+    outfile.writelines(out[:-1]) # remove the ending \n on last line
 
 def conlleval(p, g, w, filename, mode):
     '''
@@ -129,7 +126,6 @@ def conlleval(p, g, w, filename, mode):
     with open(path_out) as infile:
       slots = [line.split() for line in infile.read().split('\n')]
 
-    print(len(utterances), len(slots), len(p))
     out = ''
 
     for words, tags, pred in zip(utterances, slots, p):
@@ -138,24 +134,11 @@ def conlleval(p, g, w, filename, mode):
         out += '{} {} {}\n'.format(word, tag, tag_pred)
 
       out += 'EOS O O\n\n'
-    
-
-    print(out)
-
-    """ out = ''
-    for sl, sp, sw in zip(g, p, w):
-        out += 'BOS O O\n'
-        for wl, wp, w in zip(sl, sp, sw):
-            out += w + ' ' + wl + ' ' + wp + '\n'
-        out += 'EOS O O\n\n'
-    print(out)
-    """
 
     f = open(filename, 'w')
     f.writelines(out[:-1]) # remove the ending \n on last line
     f.close()
 
-    print('get_perf:', filename)
     return get_perf(filename)
 
 def get_perf(filename):
@@ -163,14 +146,9 @@ def get_perf(filename):
     precision/recall and F1 score '''
 
     _conlleval = os.path.dirname(os.path.realpath(__file__)) + '/conlleval.pl'
-
-    print(_conlleval)
-    print(filename)
     output = subprocess.getoutput("perl conlleval.pl < {}".format(filename))
-    print(output)
 
     for line in output.split('\n'):
-        print('L:', line)
         if 'accuracy' in line:
             out = line.split()
             break
@@ -213,8 +191,9 @@ def read_data(source_path, target_path, label_path, max_size=None):
                                                or counter < max_size):
           counter += 1
           if counter % 100000 == 0:
-            print("  reading data line %d" % counter)
+            logging.info('\treading data line %s', counter)
             sys.stdout.flush()
+
           source_ids = [int(x) for x in source.split()]
           target_ids = [int(x) for x in target.split()]
           label_ids = [int(x) for x in label.split()]
@@ -269,16 +248,16 @@ def create_model(session,
 
   ckpt = tf.train.get_checkpoint_state(FLAGS.train_dir)
   if ckpt:
-    print("Reading model parameters from %s" % ckpt.model_checkpoint_path)
+    logging.info('Reading model parameters from %s', ckpt.model_checkpoint_path)
     model_train.saver.restore(session, ckpt.model_checkpoint_path)
   else:
-    print("Created model with fresh parameters.")
+    logging.info('Created model with fresh parameters.')
     session.run(tf.global_variables_initializer())
   return model_train, model_test
         
 def train():
-  print ('Applying Parameters:')
-  print("Preparing data in %s" % FLAGS.data_dir)
+  logging.info('Applying Parameters:')
+  logging.info('Preparing data in %s', FLAGS.data_dir)
 
   vocab_path = ''
   tag_vocab_path = ''
@@ -311,20 +290,20 @@ def train():
     
   with tf.Session(config=config) as sess:
     # Create model.
-    print("Max sequence length: %d." % _buckets[0][0])
-    print("Creating %d layers of %d units." % (FLAGS.num_layers, FLAGS.size))
+    logging.info('Max sequence length: %s.', _buckets[0][0])
+    logging.info('Creating %s layers of %s units.', FLAGS.num_layers, FLAGS.size)
     
     model, model_test = create_model(sess, 
                                      len(vocab), 
                                      len(tag_vocab), 
                                      len(label_vocab))
-    print ("Creating model with " + 
-           "source_vocab_size=%d, target_vocab_size=%d, label_vocab_size=%d." \
-           % (len(vocab), len(tag_vocab), len(label_vocab)))
+    logging.info(
+      'Creating model with source_vocab_size=%s, target_vocab_size=%s, label_vocab_size=%s.', 
+      len(vocab), len(tag_vocab), len(label_vocab)
+    )
 
     # Read data into buckets and compute their sizes.
-    print ("Reading train/valid/test data (training set limit: %d)."
-           % FLAGS.max_train_data_size)
+    logging.info('Reading train/valid/test data (training set limit: %s).', FLAGS.max_train_data_size)
     dev_set = read_data(in_seq_dev, out_seq_dev, label_dev)
     test_set = read_data(in_seq_test, out_seq_test, label_test)
     train_set = read_data(in_seq_train, out_seq_train, label_train)
@@ -445,7 +424,6 @@ def train():
                   ref_label_list.append(rev_label_vocab[labels[0][0]])
                   hyp_label = np.argmax(class_logits[0], 0)
                   hyp_label_list.append(rev_label_vocab[hyp_label])
-                  print('-->intent:', labels[0], hyp_label)
                   if labels[0] == hyp_label:
                     correct_count += 1
 
@@ -469,7 +447,6 @@ def train():
               print("  %s accuracy: %.2f %d/%d" \
                     % (mode, accuracy, correct_count, count))
               sys.stdout.flush()
-              print('intent-->', hyp_label_list)
               intenteval(hyp_label_list, intent_out_file, mode)
             if task['tagging'] == 1:
               if mode == 'Eval':
@@ -477,12 +454,6 @@ def train():
               elif mode == 'Test':
                   taging_out_file = current_taging_test_out_file
               
-              #print('mode', mode)
-              #print('hyp_tag_list', hyp_tag_list)
-              #print('ref_tag_list', ref_tag_list)
-              #print('word_list', word_list)
-              #print('taging_out_file', taging_out_file)
-
               tagging_eval_result = conlleval(
                 hyp_tag_list, 
                 ref_tag_list, 
@@ -491,7 +462,7 @@ def train():
                 mode
               )
               print("  %s f1-score: %.2f" % (mode, tagging_eval_result['f1']))
-              #sys.stdout.flush()
+              sys.stdout.flush()
               #sys.exit(0)
             return accuracy, tagging_eval_result
             
