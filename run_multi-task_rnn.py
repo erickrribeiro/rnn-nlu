@@ -57,8 +57,9 @@ tf.app.flags.DEFINE_float("dropout_keep_prob", 0.5,
 tf.app.flags.DEFINE_boolean("bidirectional_rnn", True,
                             "Use birectional RNN")
 tf.app.flags.DEFINE_string("task", None, "Options: joint; intent; tagging")
+tf.app.flags.DEFINE_string("embedding_path", None, "embedding array's path.")
 FLAGS = tf.app.flags.FLAGS
-    
+
 if FLAGS.max_sequence_length == 0:
     logging.info('Please indicate max sequence length. Exit')
     exit()
@@ -227,7 +228,8 @@ def create_model(session,
           forward_only=False, 
           use_attention=FLAGS.use_attention,
           bidirectional_rnn=FLAGS.bidirectional_rnn,
-          task=task)
+          task=task, 
+          embedding_path=FLAGS.embedding_path)
   with tf.variable_scope("model", reuse=True):
     model_test = multi_task_model.MultiTaskModel(
           source_vocab_size, 
@@ -244,7 +246,8 @@ def create_model(session,
           forward_only=True, 
           use_attention=FLAGS.use_attention,
           bidirectional_rnn=FLAGS.bidirectional_rnn,
-          task=task)
+          task=task, 
+          embedding_path=FLAGS.embedding_path)
 
   ckpt = tf.train.get_checkpoint_state(FLAGS.train_dir)
   if ckpt:

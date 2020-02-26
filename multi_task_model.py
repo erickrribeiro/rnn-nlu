@@ -50,7 +50,8 @@ class MultiTaskModel(object):
                num_samples=1024, 
                use_attention=False, 
                task=None, 
-               forward_only=False):
+               forward_only=False,
+               embedding_path=None):
     self.source_vocab_size = source_vocab_size
     self.tag_vocab_size = tag_vocab_size
     self.label_vocab_size = label_vocab_size
@@ -61,6 +62,7 @@ class MultiTaskModel(object):
     self.batch_size = batch_size
     self.bidirectional_rnn = bidirectional_rnn
     self.global_step = tf.Variable(0, trainable=False)
+    self.embedding_path = embedding_path
     
     # If we use sampled softmax, we need an output projection.
     softmax_loss_function = None
@@ -160,12 +162,25 @@ class MultiTaskModel(object):
     """
     with tf.variable_scope("generate_seq_output"):
       if self.bidirectional_rnn:
-        embedding = tf.get_variable("embedding",
-                                    [self.source_vocab_size,
-                                     self.word_embedding_size])
+          
+        # begin
+        if self.embedding_path:
+          print("Loading embedding with numpy!")
+          embedding_weight = np.load(arg.embedding_path)
+          embedding = tf.Variable(
+            embedding_weight, name='embedding', dtype=tf.float32)
+        else:
+          embedding = tf.get_variable(
+            'embedding',
+            [self.source_vocab_size, self.word_embedding_size]
+          )
+        # end
+
         encoder_emb_inputs = list()
         encoder_emb_inputs = [tf.nn.embedding_lookup(embedding, encoder_input)\
                                 for encoder_input in self.encoder_inputs]
+
+                                
         rnn_outputs = static_bidirectional_rnn(self.cell_fw,
                                                self.cell_bw, 
                                                encoder_emb_inputs, 
@@ -183,9 +198,19 @@ class MultiTaskModel(object):
                       for e in encoder_outputs]
         attention_states = tf.concat(top_states, 1)
       else:
-        embedding = tf.get_variable("embedding", 
-                                    [self.source_vocab_size,
-                                     self.word_embedding_size])
+        # begin
+        if self.embedding_path:
+          print("Loading embedding with numpy!")
+          embedding_weight = np.load(arg.embedding_path)
+          embedding = tf.Variable(
+            embedding_weight, name='embedding', dtype=tf.float32)
+        else:
+          embedding = tf.get_variable(
+            'embedding',
+            [self.source_vocab_size, self.word_embedding_size]
+          )
+        # end
+
         encoder_emb_inputs = list()
         encoder_emb_inputs = [tf.nn.embedding_lookup(embedding, encoder_input)\
                               for encoder_input in self.encoder_inputs] 
